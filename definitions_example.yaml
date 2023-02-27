@@ -1,0 +1,53 @@
+---
+aws_profile: 'your aws profile'
+ec2_includes: # These included keywords are evaluated against the boto3 ec2 library to match only describe methods with these values
+  - 'transit_gateway'
+  - 'e_route_table'
+  - 'e_vpc'
+  - 'subnets'
+  - 'e_network_interfaces'
+  - 'nat_gateways'
+  - 'local_gateways'
+  - 'vpn_gateways'
+  - 'be_security_groups'
+  - 'e_addresses'
+  - 'e_instances'
+  - 'e_volumes'
+  - 'customer_gateways'
+  - 'internet_gateways'
+ec2_exclusions:
+  - 'vpc_attribute'
+  - '_classic_link'
+  - 'service_permissions'
+  - 'addresses_attr'
+elb_includes: # These included keywords are evaluated against the boto3 elbv2 library to match only describe methods with these values
+  - '_load_balancers'
+  - 'target_groups'
+#  - '_listeners' TODO Evaluate How to Filter/Query and populate
+elb_exclusions:
+  -
+regions:
+  - us-west-2:
+      dev: # Your Environment Examples: [dev, test, nonprod, prod, qa, eng]
+        vpc_ids:
+          - 'vpc1id'
+          - 'vpc2id'
+          - 'vpc3id'
+        tgw_ids:
+          - 'tgw1id'
+        service_names:
+          - 'aws vpc endpoint service name'
+        resource_types:
+          - 'ec2'
+          - 'elbv2'
+  - us-east-2:
+      test: # Your Environment Examples: [dev, test, nonprod, prod, qa, eng]
+        vpc_ids:
+          - 'vpc1id'
+        tgw_ids:
+          - 'tgw1id'
+        service_names:
+          - 'aws vpc endpoint service name'
+        resource_types:
+          - 'ec2'
+          - 'elbv2'

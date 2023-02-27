@@ -2,10 +2,11 @@ import boto3
 import json
 import os
 import re
+from pprint import pprint as pp
 
 __author__ = "Anton Coleman"
-__copyright__ = "Copyright 2023, Prisma SASE Automation"
-__credits__ = ["Robert Hagen"]
+__copyright__ = "Copyright 2023, Software NGFW Automation"
+__credits__ = ["Sean Youngberg"]
 __license__ = "MIT"
 __version__ = ".1"
 __maintainer__ = "Anton Coleman"
@@ -63,6 +64,7 @@ def iterate_dict_cleanup(awsdict):
 
 def filter_data(key, options, func, filter_value=None):
     if filter_value is not None:
+
         if key in options:
             val = func(
                 Filters=[
@@ -105,7 +107,8 @@ def replace_unique_chars(param_string, replacement_patterns):
 
 
 # iterate over the methods of the class
-def export_aws_config(aws_profile, schema, keywords, excludes, patterns=None, method_match='describe', resource_type='ec2', region='us-east-2', **kwargs):
+def export_aws_config(aws_profile, schema, keywords, excludes, patterns=None, method_match='describe',
+                      resource_type='ec2', region='us-east-2', **kwargs):
     """
 
     Args:
@@ -143,19 +146,31 @@ def export_aws_config(aws_profile, schema, keywords, excludes, patterns=None, me
                                 if bool(kwargs):
                                     for k, v in kwargs.items():
                                         if ops is not None:
-                                            # Unique for vpc ids following attachments
-                                            # TODO build function to set replacement values for normalization
-                                            k = k.replace('attachment_', 'attachment.')
-                                            k = k.replace('_','-' )
-                                            filtered = filter_data(k, options=ops,
-                                                                   func=method_obj, filter_value=v)
-                                            if filtered is not None:
-                                                # Remove unnecessary data
-                                                filtered.pop('ResponseMetadata')
-                                                # Check if keywords match a dict for nesting data
-                                                schema.update(filtered)
-                                                # check_keywords(keywords[keyword], data=filtered)
-                                                break
+                                            if type(v) == list:
+                                                for item in v:
+                                                    # Unique for vpc ids following attachments
+                                                    # TODO build function to set replacement values for normalization
+                                                    k = k.replace('attachment_', 'attachment.')
+                                                    k = k.replace('_', '-')
+                                                    filtered = filter_data(k, options=ops,
+                                                                           func=method_obj, filter_value=item)
+                                                    if filtered is not None:
+                                                        # Remove unnecessary data
+                                                        filtered.pop('ResponseMetadata')
+                                                        for fk in filtered:
+                                                            if fk in schema:
+                                                                if len(filtered[fk]) >= 1:
+                                                                    # if name == 'test_attr':
+                                                                    #     print(item)
+                                                                    #     print(filtered[fk][0])
+                                                                    if filtered[fk][0] not in schema[fk]:
+                                                                        schema[fk].append(filtered[fk][0])
+                                                            else:
+                                                                # if name == 'test_attr':
+                                                                #     print(item)
+                                                                #     for test in filtered[fk]:
+                                                                #         print(test)
+                                                                schema.update({fk: filtered[fk]})
                                         else:
                                             val = method_obj()
                                             val.pop('ResponseMetadata')
@@ -164,10 +179,12 @@ def export_aws_config(aws_profile, schema, keywords, excludes, patterns=None, me
                                                 schema.update({i: {}})
                                                 for o in val[i]:
                                                     if k in o:
-                                                        if v == o[k]:
-                                                            item_list.append(o)
-                                                            schema[i] = item_list
-
+                                                        for vi in v:
+                                                            if vi == o[k]:
+                                                                item_list.append(o)
+                                                                schema[i] = item_list
+                                    else:
+                                        break
                                 else:
                                     val = method_obj()
                                     val.pop('ResponseMetadata')
@@ -177,7 +194,7 @@ def export_aws_config(aws_profile, schema, keywords, excludes, patterns=None, me
         return f'Failed to generate AWS configuration export with error: {e}'
 
 
-def rebuild_aws_network_config(schema): # TODO Future Implementation if transforming the data is required
+def rebuild_aws_network_config(schema):  # TODO Future Implementation if transforming the data is required
     """
 
     Args:
@@ -234,3 +251,51 @@ def generate_json_file(filename, config):
             json.dump(config, f, indent=4, default=str, sort_keys=True)
     except Exception as e:
         raise e
+
+
+def orchestrate_export(definition, schema):
+    for region in definition["regions"]:
+        for rk in region:
+            schema['regions'].update({rk: {}})
+            environments = region[rk]
+            for env in environments:
+                attrs = environments[env]
+                schema['regions'][rk].update({env: {}})
+
+                if 'resource_types' in attrs:
+                    for rtype in attrs['resource_types']:
+                        if rtype == 'ec2':
+                            # TODO Add Defaults if data is missing from defintion
+                            includes = definition["ec2_includes"]
+                            excludes = definition["ec2_exclusions"]
+                            filters = {
+                                'vpc_id': attrs['vpc_ids'],
+                                'transit_gateway_id': attrs['tgw_ids'],
+                                'service_name': attrs['service_names'],
+                                'attachment_vpc_id': attrs['vpc_ids'],
+                            }
+                        if rtype == 'elbv2':
+                            # TODO Add Defaults if data is missing from defintion
+                            includes = definition["elb_includes"]
+                            filters = {
+                                'VpcId': attrs['vpc_ids']
+                            }
+                            excludes = []
+                        try:
+                            result = export_aws_config(aws_profile=definition["aws_profile"],
+                                                       schema={},
+                                                       keywords=includes,
+                                                       excludes=excludes,
+                                                       region=rk,
+                                                       resource_type=rtype,
+                                                       **filters
+                                                       )
+
+                            schema['regions'][rk][env].update(result)
+                        except Exception as e:
+                            print(e)
+                            exit()
+
+                else:
+                    raise f'No aws resource type was specified in the definition'
+    return schema
