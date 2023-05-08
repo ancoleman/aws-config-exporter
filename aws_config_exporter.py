@@ -18,10 +18,10 @@ __maintainer__ = "Anton Coleman"
 __email__ = "acoleman@paloaltonetworks.com"
 __status__ = "Community"
 
-
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
 logger = logging.getLogger(__name__)
+
 
 def extract_filter_options(doc, param='Filters'):
     if doc is not None:
@@ -356,8 +356,9 @@ def orchestrate_aws_export(f):
                                                        )
 
                             schema['regions'][rk][env].update(result)
-                            logger.info(f'Completed configuration retrieval for environment **{env}** using the **{rtype}** '
-                                        f'client')
+                            logger.info(
+                                f'Completed configuration retrieval for environment **{env}** using the **{rtype}** '
+                                f'client')
                         except Exception as e:
                             print(e)
                             sys.exit(1)
