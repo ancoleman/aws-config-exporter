@@ -24,12 +24,9 @@ Simple Export Script to output AWS configuration to a JSON File.
 ### Future Support
 * ASG and related components
 
-### Example Usage
-CLI has been added to this project, you now can pass the definitions filename to the script to run the export.
-```bash
-
 #### Definitions
 You can use the _defintions_example.yaml_ to start defining the infrastructure configuration you want to export.
+
 ```yaml
 ---
 aws_profile: # Leave this blank to use metadata from the AWS Cloud Shell / CLI
@@ -90,6 +87,9 @@ regions:
           - 'ec2'
           - 'elbv2'
 ```
+
+### Example Usage
+CLI has been added to this project, you now can pass the definitions filename to the script to run the export.
 
 ```bash
 git clone https://github.com/ancoleman/aws-config-exporter
