@@ -1,8 +1,13 @@
+import sys
 import boto3
 import json
 import os
 import re
-from pprint import pprint as pp
+import logging
+from tqdm import tqdm
+import yaml
+from pathlib import Path
+import click
 
 __author__ = "Anton Coleman"
 __copyright__ = "Copyright 2023, Software NGFW Automation"
@@ -14,7 +19,11 @@ __email__ = "acoleman@paloaltonetworks.com"
 __status__ = "Community"
 
 
-def extract_filter_options(doc):
+# Set up logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
+logger = logging.getLogger(__name__)
+
+def extract_filter_options(doc, param='Filters'):
     if doc is not None:
         request_syntax_match = re.search(r"\n\s*\*+\s*Request Syntax\s*\*+\s*\n",
                                          str(doc))
@@ -34,7 +43,7 @@ def extract_filter_options(doc):
         # Extract the parameter information from the "Request Syntax" section
         request_syntax_text = str(doc)[request_syntax_start:request_syntax_end]
         request_syntax_text = os.linesep.join([s for s in request_syntax_text.splitlines() if s])
-        pattern = r':param Filters:(.*?):param'
+        pattern = fr':param {param}:(.*?):param'
         # Search for the pattern in the text
         match = re.search(pattern, request_syntax_text, re.DOTALL)
         if match:
@@ -47,6 +56,15 @@ def extract_filter_options(doc):
 
 
 def iterate_dict_cleanup(awsdict):
+    """
+    This function is used to clean up the dictionary returned from the boto3 describe methods.
+
+    Args:
+        awsdict:
+
+    Returns:
+
+    """
     rebuild_dict = {}
 
     def method_dict_cleanup(parent, child_key):
@@ -63,6 +81,18 @@ def iterate_dict_cleanup(awsdict):
 
 
 def filter_data(key, options, func, filter_value=None):
+    """
+    This function is used to filter the data returned from the boto3 describe methods.
+
+    Args:
+        key:
+        options:
+        func:
+        filter_value:
+
+    Returns:
+
+    """
     if filter_value is not None:
 
         if key in options:
@@ -107,7 +137,7 @@ def replace_unique_chars(param_string, replacement_patterns):
 
 
 # iterate over the methods of the class
-def export_aws_config(aws_profile, schema, keywords, excludes, patterns=None, method_match='describe',
+def export_aws_config(schema, keywords, excludes, aws_profile=None, patterns=None, method_match='describe',
                       resource_type='ec2', region='us-east-2', **kwargs):
     """
 
@@ -124,9 +154,14 @@ def export_aws_config(aws_profile, schema, keywords, excludes, patterns=None, me
     Returns:
 
     """
-    session = boto3.Session(
-        profile_name=aws_profile, region_name=region)
-    client = session.client(resource_type)
+    if aws_profile:
+        session = boto3.Session(
+            profile_name=aws_profile, region_name=region)
+        client = session.client(resource_type)
+    else:
+        # Assumes Metadata Credentials
+        session = boto3.Session(region_name=region)
+        client = session.client(resource_type)
 
     try:
         for method in dir(client):
@@ -142,9 +177,10 @@ def export_aws_config(aws_profile, schema, keywords, excludes, patterns=None, me
                                 # Extract Docstrings to retrieve filtering options
                                 doc = method_obj.__doc__
                                 ops = extract_filter_options(doc)
+                                config_type = (name.split("describe_"))[1]
                                 # Check if filter options exist
                                 if bool(kwargs):
-                                    for k, v in kwargs.items():
+                                    for k, v in tqdm(kwargs.items(), desc=f'Retrieving {config_type} for {region}'):
                                         if ops is not None:
                                             if type(v) == list:
                                                 for item in v:
@@ -253,21 +289,49 @@ def generate_json_file(filename, config):
         raise e
 
 
-def orchestrate_export(definition, schema):
-    for region in definition["regions"]:
+def load_definition(filename):
+    try:
+        config = yaml.safe_load(Path(filename).read_text())
+        return config
+    except Exception as e:
+        sys.exit(1)
+
+
+@click.command()
+@click.option('--f', default='definitions.yaml', help='YAML filename that includes AWS Definitions')
+def orchestrate_aws_export(f):
+    """
+    Orchestrates the AWS Configuration Export by loading the definition file and generating the configuration export,
+    then generating the JSON file for the configuration export.
+    Args:
+        f: filename for the definition file
+
+    Returns:
+
+    """
+    config = load_definition(f)
+    schema = {
+        "product_type": "software_ngfw",
+        "cloud_provider": "aws",
+        "regions": {}
+    }
+    for region in config["regions"]:
         for rk in region:
+            logger.info(f'Accessing region: {rk}')
             schema['regions'].update({rk: {}})
             environments = region[rk]
             for env in environments:
+                logger.info(f'Retrieving environment: {env}')
                 attrs = environments[env]
                 schema['regions'][rk].update({env: {}})
 
                 if 'resource_types' in attrs:
                     for rtype in attrs['resource_types']:
+                        logger.info(f'Accessing AWS Client Type: {rtype}')
                         if rtype == 'ec2':
                             # TODO Add Defaults if data is missing from defintion
-                            includes = definition["ec2_includes"]
-                            excludes = definition["ec2_exclusions"]
+                            includes = config["ec2_includes"]
+                            excludes = config["ec2_exclusions"]
                             filters = {
                                 'vpc_id': attrs['vpc_ids'],
                                 'transit_gateway_id': attrs['tgw_ids'],
@@ -276,13 +340,13 @@ def orchestrate_export(definition, schema):
                             }
                         if rtype == 'elbv2':
                             # TODO Add Defaults if data is missing from defintion
-                            includes = definition["elb_includes"]
+                            includes = config["elb_includes"]
                             filters = {
                                 'VpcId': attrs['vpc_ids']
                             }
                             excludes = []
                         try:
-                            result = export_aws_config(aws_profile=definition["aws_profile"],
+                            result = export_aws_config(aws_profile=config["aws_profile"],
                                                        schema={},
                                                        keywords=includes,
                                                        excludes=excludes,
@@ -292,10 +356,28 @@ def orchestrate_export(definition, schema):
                                                        )
 
                             schema['regions'][rk][env].update(result)
+                            logger.info(f'Completed configuration retrieval for environment **{env}** using the **{rtype}** '
+                                        f'client')
                         except Exception as e:
                             print(e)
-                            exit()
+                            sys.exit(1)
 
                 else:
                     raise f'No aws resource type was specified in the definition'
-    return schema
+
+    if len(config["regions"]) > 1:
+        filename = f'multi-region-aws-config.json'
+        generate_json_file(filename, schema)
+        print(f'Generated {filename}')
+    else:
+        filename = f'{list(config["regions"][0].keys())[0]}-aws-config.json'
+        generate_json_file(filename, schema)
+        print(f'Generated {filename}')
+
+
+if __name__ == '__main__':
+    try:
+        orchestrate_aws_export()
+    except Exception as e:
+        print(e)
+        sys.exit(1)

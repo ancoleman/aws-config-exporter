@@ -1,5 +1,5 @@
 ---
-aws_profile: 'your aws profile'
+aws_profile: # Leave this blank to use metadata from the AWS Cloud Shell / CLI
 ec2_includes: # These included keywords are evaluated against the boto3 ec2 library to match only describe methods with these values
   - 'transit_gateway'
   - 'e_route_table'
@@ -15,6 +15,7 @@ ec2_includes: # These included keywords are evaluated against the boto3 ec2 libr
   - 'e_volumes'
   - 'customer_gateways'
   - 'internet_gateways'
+  - 'e_route_tables'
 ec2_exclusions:
   - 'vpc_attribute'
   - '_classic_link'
@@ -26,24 +27,28 @@ elb_includes: # These included keywords are evaluated against the boto3 elbv2 li
 #  - '_listeners' TODO Evaluate How to Filter/Query and populate
 elb_exclusions:
   -
+dependencies:
+  - 'LoadBalancerArn'
 regions:
+  - us-east-2:
+      dev: # Your Environment Examples: [dev, test, nonprod, prod, qa, eng]
+        vpc_ids: # These are the VPC IDs that will be used to filter the describe methods
+          - 'vpcid'
+          - 'vpcid'
+          - 'vpcid'
+        tgw_ids: # These are the TGW IDs that will be used to filter the describe methods
+          - 'your_tgw_id'
+        service_names: # These are the Service Names that will be used to filter the describe methods
+          - 'your_service_name'
+        resource_types: # These are the Resource Types that will be used to filter the describe methods
+          - 'ec2'
+          - 'elbv2'
   - us-west-2:
       dev: # Your Environment Examples: [dev, test, nonprod, prod, qa, eng]
         vpc_ids:
           - 'vpc1id'
           - 'vpc2id'
           - 'vpc3id'
-        tgw_ids:
-          - 'tgw1id'
-        service_names:
-          - 'aws vpc endpoint service name'
-        resource_types:
-          - 'ec2'
-          - 'elbv2'
-  - us-east-2:
-      test: # Your Environment Examples: [dev, test, nonprod, prod, qa, eng]
-        vpc_ids:
-          - 'vpc1id'
         tgw_ids:
           - 'tgw1id'
         service_names:

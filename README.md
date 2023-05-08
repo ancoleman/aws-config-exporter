@@ -7,8 +7,8 @@
 Simple Export Script to output AWS configuration to a JSON File.
 
 ### Requirements
-* Python 3.9+
-* AWS Credentials Profile
+* Python 3.7+
+* AWS Credentials Profile or Cloud Shell IAM Permissions
 
 ### Supported Configuration Exports
 * EC2
@@ -25,13 +25,14 @@ Simple Export Script to output AWS configuration to a JSON File.
 * ASG and related components
 
 ### Example Usage
-Currently, no CLI has been added to this project, so all parameters need to be added to the script.
+CLI has been added to this project, you now can pass the definitions filename to the script to run the export.
+```bash
 
 #### Definitions
 You can use the _defintions_example.yaml_ to start defining the infrastructure configuration you want to export.
 ```yaml
 ---
-aws_profile: 'your aws profile'
+aws_profile: # Leave this blank to use metadata from the AWS Cloud Shell / CLI
 ec2_includes: # These included keywords are evaluated against the boto3 ec2 library to match only describe methods with these values
   - 'transit_gateway'
   - 'e_route_table'
@@ -47,6 +48,7 @@ ec2_includes: # These included keywords are evaluated against the boto3 ec2 libr
   - 'e_volumes'
   - 'customer_gateways'
   - 'internet_gateways'
+  - 'e_route_tables'
 ec2_exclusions:
   - 'vpc_attribute'
   - '_classic_link'
@@ -58,7 +60,22 @@ elb_includes: # These included keywords are evaluated against the boto3 elbv2 li
 #  - '_listeners' TODO Evaluate How to Filter/Query and populate
 elb_exclusions:
   -
+dependencies:
+  - 'LoadBalancerArn'
 regions:
+  - us-east-2:
+      dev: # Your Environment Examples: [dev, test, nonprod, prod, qa, eng]
+        vpc_ids: # These are the VPC IDs that will be used to filter the describe methods
+          - 'vpcid'
+          - 'vpcid'
+          - 'vpcid'
+        tgw_ids: # These are the TGW IDs that will be used to filter the describe methods
+          - 'your_tgw_id'
+        service_names: # These are the Service Names that will be used to filter the describe methods
+          - 'your_service_name'
+        resource_types: # These are the Resource Types that will be used to filter the describe methods
+          - 'ec2'
+          - 'elbv2'
   - us-west-2:
       dev: # Your Environment Examples: [dev, test, nonprod, prod, qa, eng]
         vpc_ids:
@@ -72,49 +89,15 @@ regions:
         resource_types:
           - 'ec2'
           - 'elbv2'
-  - us-east-2:
-      test: # Your Environment Examples: [dev, test, nonprod, prod, qa, eng]
-        vpc_ids:
-          - 'vpc1id'
-        tgw_ids:
-          - 'tgw1id'
-        service_names:
-          - 'aws vpc endpoint service name'
-        resource_types:
-          - 'ec2'
-          - 'elbv2'
 ```
 
-```
+```bash
 git clone https://github.com/ancoleman/aws-config-exporter
 cd aws-config-exporter
-pip install -r requirements.txt
-```
+python3 -m pip install --upgrade pip
+python3 -m pip install -r requirements.txt
 
-```python
-#Example from example.py
-import aws_config_exporter as aws
-from pathlib import Path
-import yaml
-
-cfg_init = yaml.safe_load(Path('definitions.yaml').read_text())
-
-aws_config = {
-    "product_type": "public_cloud",
-    "cloud_provider": "aws",
-    "regions": {}
-}
-
-aws_config = aws.orchestrate_export(cfg_init, aws_config)
-
-if len(cfg_init["regions"]) > 1:
-    filename = f'multi-region-aws-config.json'
-else:
-    filename = f'{cfg_init["regions"][0]}-aws-config.json'
-
-# rebuild_aws_network_config(schema=config) # TODO Normalization of data
-aws.generate_json_file(filename, aws_config)
-
+python3 aws_config_exporter.py --f definitions_example.yaml
 ```
 
 
@@ -123,6 +106,8 @@ aws.generate_json_file(filename, aws_config)
 
 * 0.1
     * Initial Release
+* 0.2
+  * Added CLI
 
 ## License
 This project is licensed under the MIT License - see the [LICENSE](./LICENSE) file for details
