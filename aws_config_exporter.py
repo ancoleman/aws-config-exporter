@@ -180,7 +180,8 @@ def export_aws_config(schema, keywords, excludes, aws_profile=None, patterns=Non
                                 config_type = (name.split("describe_"))[1]
                                 # Check if filter options exist
                                 if bool(kwargs):
-                                    for k, v in tqdm(kwargs.items(), desc=f'Retrieving {config_type} for {region}'):
+                                    for k, v in tqdm(kwargs.items(), desc=f'Retrieving {config_type} for {region}',
+                                                     bar_format='{l_bar}{bar:15}{r_bar}{bar:-15b}'):
                                         if ops is not None:
                                             if type(v) == list:
                                                 for item in v:
