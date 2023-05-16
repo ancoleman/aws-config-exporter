@@ -2,12 +2,15 @@ import sys
 import boto3
 import json
 import os
+import signal
+import atexit
 import re
 import logging
 from tqdm import tqdm
 import yaml
 from pathlib import Path
 import click
+from pprint import pprint
 
 __author__ = "Anton Coleman"
 __copyright__ = "Copyright 2023, Software NGFW Automation"
@@ -168,7 +171,7 @@ def export_aws_config(schema, keywords, excludes, aws_profile=None, patterns=Non
             # Retrieves all callable methods from the boto3 client object
             if callable(getattr(client, method)):
                 name = str(method)
-                if 'describe' in name:
+                if method_match in name:
                     for keyword in keywords:
                         if keyword in name:
                             # Check if the method is to be excluded from exporting
@@ -180,34 +183,32 @@ def export_aws_config(schema, keywords, excludes, aws_profile=None, patterns=Non
                                 config_type = (name.split("describe_"))[1]
                                 # Check if filter options exist
                                 if bool(kwargs):
-                                    for k, v in tqdm(kwargs.items(), desc=f'Retrieving {config_type} for {region}',
-                                                     bar_format='{l_bar}{bar:15}{r_bar}{bar:-15b}'):
+                                    for k, v in kwargs.items():
                                         if ops is not None:
                                             if type(v) == list:
-                                                for item in v:
-                                                    # Unique for vpc ids following attachments
-                                                    # TODO build function to set replacement values for normalization
-                                                    k = k.replace('attachment_', 'attachment.')
-                                                    k = k.replace('_', '-')
-                                                    filtered = filter_data(k, options=ops,
-                                                                           func=method_obj, filter_value=item)
-                                                    if filtered is not None:
-                                                        # Remove unnecessary data
-                                                        filtered.pop('ResponseMetadata')
-                                                        for fk in filtered:
-                                                            if fk in schema:
-                                                                if len(filtered[fk]) >= 1:
-                                                                    # if name == 'test_attr':
-                                                                    #     print(item)
-                                                                    #     print(filtered[fk][0])
-                                                                    if filtered[fk][0] not in schema[fk]:
-                                                                        schema[fk].append(filtered[fk][0])
-                                                            else:
-                                                                # if name == 'test_attr':
-                                                                #     print(item)
-                                                                #     for test in filtered[fk]:
-                                                                #         print(test)
-                                                                schema.update({fk: filtered[fk]})
+                                                item_range = len(v)
+                                                for n in range(item_range):
+                                                    for item in tqdm(v, desc=f'Fetching {config_type} in {region} for '
+                                                                             f'{v[n]}',
+                                                                     bar_format='{l_bar}{bar:15}{r_bar}{bar:-15b}'):
+                                                        # Unique for vpc ids following attachments
+                                                        # TODO build function to set replacement values for normalization
+                                                        k = k.replace('attachment_', 'attachment.')
+                                                        k = k.replace('_', '-')
+                                                        filtered = filter_data(k, options=ops,
+                                                                               func=method_obj, filter_value=item)
+                                                        if filtered is not None:
+                                                            # Remove unnecessary data
+                                                            filtered.pop('ResponseMetadata')
+                                                            for fk in filtered:
+                                                                if fk in schema:
+                                                                    filtered_length = len(filtered[fk])
+                                                                    if filtered_length >= 1:
+                                                                        for i in range(filtered_length):
+                                                                            if filtered[fk][i] not in schema[fk]:
+                                                                                schema[fk].append(filtered[fk][i])
+                                                                else:
+                                                                    schema.update({fk: filtered[fk]})
                                         else:
                                             val = method_obj()
                                             val.pop('ResponseMetadata')
@@ -378,9 +379,14 @@ def orchestrate_aws_export(f):
         print(f'Generated {filename}')
 
 
+def cleanup():
+    os.kill(os.getpid(), signal.SIGINT)
+
+
 if __name__ == '__main__':
     try:
         orchestrate_aws_export()
+        atexit.register(cleanup)
     except Exception as e:
         print(e)
         sys.exit(1)
