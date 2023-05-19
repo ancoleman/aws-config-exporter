@@ -10,6 +10,7 @@ from tqdm import tqdm
 import yaml
 from pathlib import Path
 import click
+from visualize import Visualizer
 from pprint import pprint
 
 __author__ = "Anton Coleman"
@@ -316,8 +317,15 @@ def orchestrate_aws_export(f):
     schema = {
         "product_type": "software_ngfw",
         "cloud_provider": "aws",
+        "customer": "",
         "regions": {}
     }
+    if 'customer' in config:
+        if config['customer'] is not None:
+            schema['customer'] = config['customer']
+        else:
+            schema['customer'] = 'Default Customer'
+
     for region in config["regions"]:
         for rk in region:
             logger.info(f'Accessing region: {rk}')
@@ -372,11 +380,23 @@ def orchestrate_aws_export(f):
     if len(config["regions"]) > 1:
         filename = f'multi-region-aws-config.json'
         generate_json_file(filename, schema)
-        print(f'Generated {filename}')
+        logger.info(f'Generated {filename}')
     else:
         filename = f'{list(config["regions"][0].keys())[0]}-aws-config.json'
         generate_json_file(filename, schema)
-        print(f'Generated {filename}')
+        logger.info(f'Generated {filename}')
+    logger.info(f'Completed AWS Configuration Extraction')
+    init_visualization(schema)
+
+
+def init_visualization(schema):
+    logger.info(f'Initializing AWS Visualization')
+    network = Visualizer()
+    network.set_base_ico_url('https://raw.githubusercontent.com/ancoleman/graph-icons/main/')
+    network.set_html_file('aws_network_diagram.html')
+    network.set_config(schema)
+    network.map_network_config()
+    network.render_web_visual()
 
 
 def cleanup():
